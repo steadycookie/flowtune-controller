@@ -1,122 +1,220 @@
 
-import { FlowDataPoint, SystemStatus } from "./types";
+import { SystemStatus, FlowDataPoint } from './types';
 
-// These functions simulate the hardware API calls
-// In a real application, these would communicate with the actual hardware
+// 模拟数据
+let mockSystemStatus: SystemStatus = {
+  pumpConnected: false,
+  flowMeterConnected: false,
+  pumpRunning: false,
+  scanning: false,
+  currentFrequency: null,
+  currentFlowRate: null,
+  flowRateStable: false,
+  scanProgress: 0,
+  error: null
+};
 
-// Mock state
-let mockPumpRunning = false;
-let mockCurrentFrequency = 0;
-let mockFlowRate = 0;
-let mockFlowMeterReads: number[] = [];
-let mockIsStable = false;
+let mockScanData: FlowDataPoint[] = [];
+let mockScanProgress = {
+  progress: 0,
+  currentStep: "",
+  lastDataPoint: null as FlowDataPoint | null
+};
 
-// Simulates connecting to the pump
-export function connectToPump(): Promise<boolean> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(true);
-    }, 800);
-  });
+// 模拟扫描过程
+let scanInterval: number | null = null;
+
+// 辅助函数 - 生成随机流量
+function generateRandomFlow(frequency: number): number {
+  // 模拟一个基于频率的流量曲线
+  const baseFlow = frequency * 0.1;
+  const variance = baseFlow * 0.2;
+  return baseFlow + (Math.random() * variance * 2 - variance);
 }
 
-// Simulates connecting to the flow meter
-export function connectToFlowMeter(): Promise<boolean> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(true);
-    }, 1200);
-  });
-}
-
-// Simulates starting the pump
-export function startPump(): Promise<boolean> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      mockPumpRunning = true;
-      resolve(true);
-    }, 500);
-  });
-}
-
-// Simulates stopping the pump
-export function stopPump(): Promise<boolean> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      mockPumpRunning = false;
-      mockCurrentFrequency = 0;
-      mockFlowRate = 0;
-      resolve(true);
-    }, 500);
-  });
-}
-
-// Simulates setting the pump frequency
-export function setPumpFrequency(frequency: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      mockCurrentFrequency = frequency;
-      // Simulate relationship between frequency and flow rate with some noise
-      mockFlowRate = 0.5 * frequency + Math.random() * (frequency / 10);
-      mockFlowMeterReads = [];
-      mockIsStable = false;
-      resolve(true);
-    }, 300);
-  });
-}
-
-// Simulates reading from the flow meter
-export function readFlowMeter(): Promise<number> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // Add some noise to flow readings
-      const reading = mockPumpRunning 
-        ? mockFlowRate + (Math.random() * 0.4 - 0.2)
-        : 0;
+// 开始模拟扫描过程
+function startMockScan(minFreq: number, maxFreq: number, step: number) {
+  if (scanInterval) {
+    clearInterval(scanInterval);
+  }
+  
+  mockSystemStatus.scanning = true;
+  mockSystemStatus.pumpRunning = true;
+  mockScanProgress.progress = 0;
+  mockScanProgress.currentStep = "开始扫描...";
+  mockScanData = [];
+  
+  let currentFreq = minFreq;
+  const totalSteps = Math.ceil((maxFreq - minFreq) / step);
+  let currentStep = 0;
+  
+  // 创建模拟扫描过程的定时器
+  scanInterval = window.setInterval(() => {
+    if (currentFreq <= maxFreq) {
+      mockSystemStatus.currentFrequency = currentFreq;
+      mockSystemStatus.currentFlowRate = generateRandomFlow(currentFreq);
+      mockSystemStatus.flowRateStable = true;
       
-      mockFlowMeterReads.push(reading);
+      const dataPoint = {
+        frequency: currentFreq,
+        flowRate: mockSystemStatus.currentFlowRate
+      };
       
-      // Check if we have enough readings to determine stability
-      if (mockFlowMeterReads.length > 5) {
-        const recent = mockFlowMeterReads.slice(-5);
-        const avg = recent.reduce((sum, val) => sum + val, 0) / recent.length;
-        const allClose = recent.every(val => Math.abs(val - avg) < 0.3);
-        mockIsStable = allClose;
+      mockScanData.push(dataPoint);
+      mockScanProgress.lastDataPoint = dataPoint;
+      mockScanProgress.currentStep = `测量频率 ${currentFreq.toFixed(1)} Hz`;
+      
+      currentFreq += step;
+      currentStep++;
+      mockScanProgress.progress = Math.round((currentStep / totalSteps) * 100);
+    } else {
+      // 扫描完成
+      mockSystemStatus.scanning = false;
+      mockScanProgress.currentStep = "扫描完成";
+      mockScanProgress.progress = 100;
+      
+      if (scanInterval) {
+        clearInterval(scanInterval);
+        scanInterval = null;
+      }
+    }
+  }, 1500); // 每1.5秒更新一次
+}
+
+// 模拟API响应
+export function generateMockResponse<T>(
+  endpoint: string,
+  method: string,
+  body?: any
+): Promise<{ success: boolean; data?: T; error?: string }> {
+  return new Promise((resolve) => {
+    // 添加模拟延迟
+    setTimeout(() => {
+      // 系统状态
+      if (endpoint === '/status') {
+        resolve({ success: true, data: { ...mockSystemStatus } as unknown as T });
       }
       
-      resolve(reading);
-    }, 200);
+      // 连接设备
+      else if (endpoint === '/connect' && method === 'POST') {
+        mockSystemStatus.pumpConnected = true;
+        mockSystemStatus.flowMeterConnected = true;
+        resolve({ 
+          success: true, 
+          data: { 
+            pumpConnected: true, 
+            flowMeterConnected: true 
+          } as unknown as T 
+        });
+      }
+      
+      // 启动泵
+      else if (endpoint === '/pump/start' && method === 'POST') {
+        mockSystemStatus.pumpRunning = true;
+        mockSystemStatus.currentFrequency = 10;
+        mockSystemStatus.currentFlowRate = generateRandomFlow(10);
+        resolve({ success: true, data: undefined as unknown as T });
+      }
+      
+      // 停止泵
+      else if (endpoint === '/pump/stop' && method === 'POST') {
+        mockSystemStatus.pumpRunning = false;
+        mockSystemStatus.currentFrequency = null;
+        mockSystemStatus.currentFlowRate = null;
+        mockSystemStatus.flowRateStable = false;
+        
+        if (mockSystemStatus.scanning) {
+          mockSystemStatus.scanning = false;
+          if (scanInterval) {
+            clearInterval(scanInterval);
+            scanInterval = null;
+          }
+        }
+        
+        resolve({ success: true, data: undefined as unknown as T });
+      }
+      
+      // 设置频率
+      else if (endpoint === '/pump/frequency' && method === 'POST') {
+        if (!mockSystemStatus.pumpRunning) {
+          resolve({ success: false, error: '泵未运行' });
+          return;
+        }
+        
+        const frequency = body?.frequency || 10;
+        mockSystemStatus.currentFrequency = frequency;
+        mockSystemStatus.currentFlowRate = generateRandomFlow(frequency);
+        mockSystemStatus.flowRateStable = true;
+        
+        resolve({ success: true, data: undefined as unknown as T });
+      }
+      
+      // 读取流量
+      else if (endpoint === '/flowmeter/read') {
+        if (!mockSystemStatus.pumpRunning || mockSystemStatus.currentFrequency === null) {
+          resolve({ success: true, data: 0 as unknown as T });
+          return;
+        }
+        
+        const flow = generateRandomFlow(mockSystemStatus.currentFrequency);
+        mockSystemStatus.currentFlowRate = flow;
+        resolve({ success: true, data: flow as unknown as T });
+      }
+      
+      // 检查流量稳定性
+      else if (endpoint === '/flowmeter/stable') {
+        if (!mockSystemStatus.pumpRunning) {
+          resolve({ success: true, data: false as unknown as T });
+          return;
+        }
+        
+        mockSystemStatus.flowRateStable = true;
+        resolve({ success: true, data: true as unknown as T });
+      }
+      
+      // 开始扫描
+      else if (endpoint === '/scan/start' && method === 'POST') {
+        const { minFrequency, maxFrequency, step } = body || {};
+        
+        if (!mockSystemStatus.pumpConnected || !mockSystemStatus.flowMeterConnected) {
+          resolve({ success: false, error: '设备未连接' });
+          return;
+        }
+        
+        startMockScan(minFrequency, maxFrequency, step);
+        resolve({ success: true, data: undefined as unknown as T });
+      }
+      
+      // 停止扫描
+      else if (endpoint === '/scan/stop' && method === 'POST') {
+        if (!mockSystemStatus.scanning) {
+          resolve({ success: false, error: '没有正在进行的扫描' });
+          return;
+        }
+        
+        mockSystemStatus.scanning = false;
+        if (scanInterval) {
+          clearInterval(scanInterval);
+          scanInterval = null;
+        }
+        
+        resolve({ success: true, data: undefined as unknown as T });
+      }
+      
+      // 获取扫描进度
+      else if (endpoint === '/scan/progress') {
+        resolve({ success: true, data: { ...mockScanProgress } as unknown as T });
+      }
+      
+      // 获取扫描数据
+      else if (endpoint === '/scan/data') {
+        resolve({ success: true, data: [...mockScanData] as unknown as T });
+      }
+      
+      // 未知端点
+      else {
+        resolve({ success: false, error: `未实现的模拟API: ${method} ${endpoint}` });
+      }
+    }, 300); // 添加300ms的延迟模拟网络请求
   });
-}
-
-// Checks if flow readings are stable
-export function isFlowStable(): Promise<boolean> {
-  return Promise.resolve(mockIsStable);
-}
-
-// Get the current system status
-export function getSystemStatus(): Promise<SystemStatus> {
-  return Promise.resolve({
-    pumpConnected: true,
-    flowMeterConnected: true,
-    pumpRunning: mockPumpRunning,
-    scanning: false,
-    currentFrequency: mockPumpRunning ? mockCurrentFrequency : null,
-    currentFlowRate: mockPumpRunning ? mockFlowRate : null,
-    flowRateStable: mockIsStable,
-    scanProgress: 0,
-    error: null
-  });
-}
-
-// Helper function to generate mock data for initial display
-export function generateMockData(): FlowDataPoint[] {
-  const data: FlowDataPoint[] = [];
-  for (let freq = 10; freq <= 50; freq += 5) {
-    data.push({
-      frequency: freq,
-      flowRate: 0.5 * freq + Math.random() * (freq / 5)
-    });
-  }
-  return data;
 }

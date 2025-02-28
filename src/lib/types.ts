@@ -26,6 +26,7 @@ export type ScanStatus = 'idle' | 'running' | 'completed' | 'error';
 
 export interface ApiConfig {
   baseUrl: string;
+  useMock: boolean;
 }
 
 export interface ApiResponse<T> {

@@ -1,9 +1,13 @@
 
-import { SystemStatus, FlowDataPoint, ApiResponse } from './types';
+import { SystemStatus, FlowDataPoint, ApiResponse, ApiConfig } from './types';
+import { generateMockResponse } from './mockApi';
 
 // API配置
-const API_CONFIG = {
-  baseUrl: 'http://localhost:5000/api'
+const API_CONFIG: ApiConfig = {
+  baseUrl: 'http://localhost:5000/api',
+  // 在Lovable环境中自动启用模拟模式
+  useMock: typeof window !== 'undefined' && 
+           window.location.hostname.includes('lovableproject.com')
 };
 
 // 基础请求函数
@@ -12,6 +16,12 @@ async function fetchApi<T>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
   body?: any
 ): Promise<ApiResponse<T>> {
+  // 如果启用了模拟模式，使用模拟数据
+  if (API_CONFIG.useMock) {
+    console.log(`[Mock API] ${method} ${endpoint}`);
+    return generateMockResponse<T>(endpoint, method, body);
+  }
+
   try {
     const response = await fetch(`${API_CONFIG.baseUrl}${endpoint}`, {
       method,
@@ -91,4 +101,8 @@ export async function getScanProgress(): Promise<ApiResponse<{
     currentStep: string;
     lastDataPoint?: FlowDataPoint;
   }>('/scan/progress');
+}
+
+export async function getScanData(): Promise<ApiResponse<FlowDataPoint[]>> {
+  return await fetchApi<FlowDataPoint[]>('/scan/data');
 }
