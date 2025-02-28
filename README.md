@@ -1,69 +1,85 @@
-# Welcome to your Lovable project
 
-## Project info
+# 流量-频率控制系统
 
-**URL**: https://lovable.dev/projects/78460396-59fe-49de-bb85-4ee8a5f841b6
+流量-频率控制系统是一个完整的端到端解决方案，用于控制气泵频率并测量对应流量。该系统包括React前端和Python后端，支持通过串口与真实硬件通信。
 
-## How can I edit this code?
+## 系统特点
 
-There are several ways of editing your application.
+- 实时流量监测与数据可视化
+- 泵频率精确控制
+- 自动频率-流量扫描
+- 数据导出功能
+- 设备连接状态监控
 
-**Use Lovable**
+## 项目结构
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/78460396-59fe-49de-bb85-4ee8a5f841b6) and start prompting.
+- `src/` - React前端代码
+  - `components/` - UI组件
+  - `lib/` - 工具函数和API通信
+  - `pages/` - 页面组件
+- `backend/` - Python后端代码
+  - `app.py` - Flask API服务
+  - `requirements.txt` - Python依赖
 
-Changes made via Lovable will be committed automatically to this repo.
+## 快速开始
 
-**Use your preferred IDE**
+### 启动后端
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+1. 进入backend目录
+```bash
+cd backend
+```
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+2. 安装Python依赖
+```bash
+pip install -r requirements.txt
+```
 
-Follow these steps:
+3. 配置串口（根据实际设备修改`app.py`中的端口设置）
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+4. 启动Flask服务
+```bash
+python app.py
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### 启动前端
 
-# Step 3: Install the necessary dependencies.
-npm i
+1. 安装依赖
+```bash
+npm install
+```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+2. 启动开发服务器
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## 开发指南
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### API通信
 
-**Use GitHub Codespaces**
+前端通过`src/lib/api.ts`中定义的接口与后端通信，所有API调用都返回`ApiResponse`类型的响应。
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### 硬件通信
 
-## What technologies are used for this project?
+后端使用pyserial库与硬件设备通信，支持通过串口发送和接收命令，也提供了模拟模式用于开发测试。
 
-This project is built with .
+## 扩展与定制
 
-- Vite
-- TypeScript
+- 在`backend/app.py`中修改设备通信协议以适配不同的泵和流量计
+- 在`src/components/`中自定义UI组件以满足特定需求
+- 调整`src/lib/types.ts`中的类型定义以支持更多数据字段
+
+## 技术栈
+
+### 前端
 - React
-- shadcn-ui
+- TypeScript
 - Tailwind CSS
+- Shadcn/UI
+- Recharts
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/78460396-59fe-49de-bb85-4ee8a5f841b6) and click on Share -> Publish.
-
-## I want to use a custom domain - is that possible?
-
-We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)
+### 后端
+- Python
+- Flask
+- PySerial

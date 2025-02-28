@@ -1,10 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { SystemStatus, FrequencySettings, FlowDataPoint, ScanStatus } from '@/lib/types';
-import { setPumpFrequency, readFlowMeter, isFlowStable, startPump, stopPump } from '@/lib/mockApi';
+import { startScan, stopScan, getScanProgress } from '@/lib/api';
 import { Play, StopCircle, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -26,6 +26,7 @@ const ScanControls: React.FC<ScanControlsProps> = ({
   const [scanStatus, setScanStatus] = useState<ScanStatus>('idle');
   const [progress, setProgress] = useState<number>(0);
   const [currentStep, setCurrentStep] = useState<string>('');
+  const [isPolling, setIsPolling] = useState<boolean>(false);
   
   const calculateTotalSteps = (): number => {
     const { minFrequency, maxFrequency, step } = frequencySettings;
@@ -35,12 +36,57 @@ const ScanControls: React.FC<ScanControlsProps> = ({
   
   const totalSteps = calculateTotalSteps();
   
-  const startScan = async () => {
+  // 监视扫描进度
+  useEffect(() => {
+    let intervalId: number | undefined;
+    
+    // 如果正在扫描，则轮询进度
+    if (scanStatus === 'running' && !isPolling) {
+      setIsPolling(true);
+      intervalId = window.setInterval(async () => {
+        try {
+          const response = await getScanProgress();
+          
+          if (response.success) {
+            const { progress, currentStep, lastDataPoint } = response.data!;
+            
+            setProgress(progress);
+            setCurrentStep(currentStep);
+            
+            // 如果有新数据点，则添加到图表
+            if (lastDataPoint) {
+              onAddDataPoint(lastDataPoint);
+            }
+            
+            // 如果进度已完成，则更新状态
+            if (progress === 100) {
+              setScanStatus('completed');
+              setIsPolling(false);
+              clearInterval(intervalId);
+            }
+            
+            onStatusChange();
+          }
+        } catch (error) {
+          console.error('获取扫描进度失败:', error);
+        }
+      }, 1000);
+    }
+    
+    return () => {
+      if (intervalId !== undefined) {
+        clearInterval(intervalId);
+        setIsPolling(false);
+      }
+    };
+  }, [scanStatus, isPolling, onAddDataPoint, onStatusChange]);
+  
+  const handleStartScan = async () => {
     if (disabled || scanStatus === 'running') return;
     
     const { minFrequency, maxFrequency, step } = frequencySettings;
     
-    // Validation
+    // 验证
     if (minFrequency >= maxFrequency) {
       toast.error('最小频率必须小于最大频率');
       return;
@@ -52,74 +98,21 @@ const ScanControls: React.FC<ScanControlsProps> = ({
     }
     
     try {
-      setScanStatus('running');
-      setProgress(0);
+      // 开始扫描
+      const response = await startScan({
+        minFrequency,
+        maxFrequency,
+        step
+      });
       
-      // Start the pump if it's not running
-      if (!status.pumpRunning) {
-        setCurrentStep('启动泵...');
-        await startPump();
-        onStatusChange();
+      if (response.success) {
+        setScanStatus('running');
+        setProgress(0);
+        setCurrentStep('正在启动扫描...');
+        toast.success('扫描已开始');
+      } else {
+        toast.error(`开始扫描失败: ${response.error}`);
       }
-      
-      const totalPoints = calculateTotalSteps();
-      let currentPoint = 0;
-      
-      // Start the frequency scan
-      for (let freq = minFrequency; freq <= maxFrequency; freq += step) {
-        // Round to 1 decimal place to avoid floating point issues
-        const frequency = Math.round(freq * 10) / 10;
-        
-        setCurrentStep(`设置频率: ${frequency} Hz`);
-        await setPumpFrequency(frequency);
-        onStatusChange();
-        
-        // Wait for stabilization
-        setCurrentStep(`等待流量稳定...`);
-        let stable = false;
-        let attempts = 0;
-        let readings: number[] = [];
-        
-        while (!stable && attempts < 20) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          const reading = await readFlowMeter();
-          readings.push(reading);
-          
-          // Check stability after collecting enough readings
-          if (readings.length >= 5) {
-            stable = await isFlowStable();
-          }
-          
-          onStatusChange();
-          attempts++;
-        }
-        
-        // Get the final reading (average of last 3 readings)
-        const flowRate = readings.length >= 3 
-          ? readings.slice(-3).reduce((sum, val) => sum + val, 0) / 3
-          : readings[readings.length - 1];
-        
-        // Add data point
-        onAddDataPoint({ frequency, flowRate });
-        
-        // Update progress
-        currentPoint++;
-        setProgress(Math.round((currentPoint / totalPoints) * 100));
-        
-        // Check if scan was cancelled
-        if (scanStatus !== 'running') {
-          break;
-        }
-      }
-      
-      setCurrentStep('扫描完成');
-      setScanStatus('completed');
-      
-      // Stop the pump after scan
-      await stopPump();
-      onStatusChange();
-      
-      toast.success('频率扫描已完成');
     } catch (error) {
       console.error(error);
       setScanStatus('error');
@@ -127,18 +120,22 @@ const ScanControls: React.FC<ScanControlsProps> = ({
     }
   };
   
-  const stopScan = async () => {
+  const handleStopScan = async () => {
     if (scanStatus === 'running') {
-      setScanStatus('idle');
-      setCurrentStep('扫描已停止');
-      toast.info('扫描已停止');
-      
-      // Stop the pump
       try {
-        await stopPump();
-        onStatusChange();
+        const response = await stopScan();
+        
+        if (response.success) {
+          setScanStatus('idle');
+          setCurrentStep('扫描已停止');
+          toast.info('扫描已停止');
+          onStatusChange();
+        } else {
+          toast.error(`停止扫描失败: ${response.error}`);
+        }
       } catch (error) {
         console.error(error);
+        toast.error('停止扫描失败');
       }
     }
   };
@@ -184,7 +181,7 @@ const ScanControls: React.FC<ScanControlsProps> = ({
         <div className="flex justify-between pt-2">
           {scanStatus === 'idle' ? (
             <Button 
-              onClick={startScan} 
+              onClick={handleStartScan} 
               disabled={disabled || !status.pumpConnected || !status.flowMeterConnected}
               className="w-full bg-primary/90 hover:bg-primary"
             >
@@ -193,7 +190,7 @@ const ScanControls: React.FC<ScanControlsProps> = ({
             </Button>
           ) : scanStatus === 'running' ? (
             <Button 
-              onClick={stopScan} 
+              onClick={handleStopScan} 
               variant="destructive"
               className="w-full"
             >

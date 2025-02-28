@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { SystemStatus } from '@/lib/types';
-import { readFlowMeter } from '@/lib/mockApi';
+import { readFlowMeter } from '@/lib/api';
 
 interface FlowMonitorProps {
   status: SystemStatus;
@@ -14,7 +14,7 @@ const FlowMonitor: React.FC<FlowMonitorProps> = ({ status, onStatusChange }) => 
   const [recentReadings, setRecentReadings] = useState<number[]>([]);
   const [isPolling, setIsPolling] = useState<boolean>(false);
 
-  // Start/stop polling based on pump status
+  // 根据泵状态开始/停止轮询
   useEffect(() => {
     let intervalId: number | undefined;
     
@@ -22,14 +22,16 @@ const FlowMonitor: React.FC<FlowMonitorProps> = ({ status, onStatusChange }) => 
       setIsPolling(true);
       intervalId = window.setInterval(async () => {
         try {
-          const reading = await readFlowMeter();
-          setRecentReadings(prev => {
-            const newReadings = [...prev, reading];
-            return newReadings.slice(-10); // Keep last 10 readings
-          });
-          onStatusChange();
+          const response = await readFlowMeter();
+          if (response.success && response.data !== undefined) {
+            setRecentReadings(prev => {
+              const newReadings = [...prev, response.data!];
+              return newReadings.slice(-10); // 保留最后10个读数
+            });
+            onStatusChange();
+          }
         } catch (error) {
-          console.error('Failed to read flow meter:', error);
+          console.error('读取流量计失败:', error);
         }
       }, 1000);
     }
@@ -42,7 +44,7 @@ const FlowMonitor: React.FC<FlowMonitorProps> = ({ status, onStatusChange }) => 
     };
   }, [status.pumpRunning, isPolling, onStatusChange]);
 
-  // Calculate stability percentage based on recent readings
+  // 根据最近读数计算稳定性百分比
   const calculateStabilityPercentage = (): number => {
     if (recentReadings.length < 3) return 0;
     
@@ -107,7 +109,7 @@ const FlowMonitor: React.FC<FlowMonitorProps> = ({ status, onStatusChange }) => 
                     ></div>
                   );
                 })}
-                {/* Zero line */}
+                {/* 零线 */}
                 <div className="absolute bottom-0 w-full h-[1px] bg-border/50"></div>
               </div>
             </div>

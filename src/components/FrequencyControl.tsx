@@ -7,7 +7,7 @@ import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { PlayCircle, StopCircle } from 'lucide-react';
 import { FrequencySettings, SystemStatus } from '@/lib/types';
-import { startPump, stopPump, setPumpFrequency } from '@/lib/mockApi';
+import { startPump, stopPump, setPumpFrequency } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface FrequencyControlProps {
@@ -27,7 +27,7 @@ const FrequencyControl: React.FC<FrequencyControlProps> = ({
 }) => {
   const [manualFrequency, setManualFrequency] = useState<number>(0);
 
-  // Set initial manual frequency when pump is running
+  // 当泵启动时设置初始手动频率
   useEffect(() => {
     if (status.currentFrequency !== null) {
       setManualFrequency(status.currentFrequency);
@@ -36,25 +36,33 @@ const FrequencyControl: React.FC<FrequencyControlProps> = ({
 
   const handleStartPump = async () => {
     try {
-      await startPump();
-      if (manualFrequency > 0) {
-        await setPumpFrequency(manualFrequency);
+      const response = await startPump();
+      if (response.success) {
+        if (manualFrequency > 0) {
+          await setPumpFrequency(manualFrequency);
+        }
+        onStatusChange();
+        toast.success('泵已启动');
+      } else {
+        toast.error(`启动泵失败: ${response.error}`);
       }
-      onStatusChange();
-      toast.success('泵已启动');
     } catch (error) {
-      toast.error('启动泵失败');
+      toast.error('启动泵失败，请检查连接');
       console.error(error);
     }
   };
 
   const handleStopPump = async () => {
     try {
-      await stopPump();
-      onStatusChange();
-      toast.success('泵已停止');
+      const response = await stopPump();
+      if (response.success) {
+        onStatusChange();
+        toast.success('泵已停止');
+      } else {
+        toast.error(`停止泵失败: ${response.error}`);
+      }
     } catch (error) {
-      toast.error('停止泵失败');
+      toast.error('停止泵失败，请检查连接');
       console.error(error);
     }
   };
@@ -63,10 +71,14 @@ const FrequencyControl: React.FC<FrequencyControlProps> = ({
     setManualFrequency(value);
     if (status.pumpRunning) {
       try {
-        await setPumpFrequency(value);
-        onStatusChange();
+        const response = await setPumpFrequency(value);
+        if (response.success) {
+          onStatusChange();
+        } else {
+          toast.error(`修改频率失败: ${response.error}`);
+        }
       } catch (error) {
-        toast.error('修改频率失败');
+        toast.error('修改频率失败，请检查连接');
         console.error(error);
       }
     }

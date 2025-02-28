@@ -7,7 +7,10 @@ import DataVisualizer from '@/components/DataVisualizer';
 import ScanControls from '@/components/ScanControls';
 import StatusIndicator from '@/components/StatusIndicator';
 import { FrequencySettings, FlowDataPoint, SystemStatus } from '@/lib/types';
-import { connectToPump, connectToFlowMeter, getSystemStatus, generateMockData } from '@/lib/mockApi';
+import { 
+  getSystemStatus, 
+  connectDevices
+} from '@/lib/api';
 
 const Index = () => {
   const [systemStatus, setSystemStatus] = useState<SystemStatus>({
@@ -30,33 +33,58 @@ const Index = () => {
   
   const [flowData, setFlowData] = useState<FlowDataPoint[]>([]);
   const [initializing, setInitializing] = useState<boolean>(true);
+  const [apiConnected, setApiConnected] = useState<boolean>(false);
   
-  // Initialize connections to devices
+  // 初始化设备连接
   useEffect(() => {
     const initializeDevices = async () => {
       try {
-        // Connect to pump
-        const pumpConnected = await connectToPump();
-        if (pumpConnected) {
-          toast.success('泵连接成功');
+        // 连接到后端API
+        const statusResponse = await getSystemStatus();
+        
+        if (statusResponse.success) {
+          setSystemStatus(statusResponse.data!);
+          setApiConnected(true);
+          
+          // 已经连接成功
+          if (statusResponse.data!.pumpConnected && statusResponse.data!.flowMeterConnected) {
+            toast.success('设备已连接');
+            setInitializing(false);
+            return;
+          }
+          
+          // 尝试连接设备
+          const connectResponse = await connectDevices();
+          
+          if (connectResponse.success) {
+            const { pumpConnected, flowMeterConnected } = connectResponse.data!;
+            
+            if (pumpConnected) {
+              toast.success('泵连接成功');
+            } else {
+              toast.error('泵连接失败');
+            }
+            
+            if (flowMeterConnected) {
+              toast.success('流量计连接成功');
+            } else {
+              toast.error('流量计连接失败');
+            }
+            
+            // 更新状态
+            updateSystemStatus();
+          } else {
+            toast.error(`连接设备失败: ${connectResponse.error}`);
+          }
         } else {
-          toast.error('泵连接失败');
+          toast.error(`无法连接到后端服务: ${statusResponse.error}`);
+          console.error('无法连接到后端服务:', statusResponse.error);
         }
         
-        // Connect to flow meter
-        const flowMeterConnected = await connectToFlowMeter();
-        if (flowMeterConnected) {
-          toast.success('流量计连接成功');
-        } else {
-          toast.error('流量计连接失败');
-        }
-        
-        // Update status
-        updateSystemStatus();
         setInitializing(false);
       } catch (error) {
         console.error('初始化设备失败:', error);
-        toast.error('连接设备失败，请检查连接');
+        toast.error('连接设备失败，请确保后端服务正在运行');
         setInitializing(false);
       }
     };
@@ -64,16 +92,20 @@ const Index = () => {
     initializeDevices();
   }, []);
   
-  // Periodically update system status
+  // 定期更新系统状态
   useEffect(() => {
+    if (!apiConnected) return;
+    
     const intervalId = setInterval(updateSystemStatus, 2000);
     return () => clearInterval(intervalId);
-  }, []);
+  }, [apiConnected]);
   
   const updateSystemStatus = async () => {
     try {
-      const status = await getSystemStatus();
-      setSystemStatus(status);
+      const response = await getSystemStatus();
+      if (response.success) {
+        setSystemStatus(response.data!);
+      }
     } catch (error) {
       console.error('获取系统状态失败:', error);
     }
@@ -81,15 +113,15 @@ const Index = () => {
   
   const handleAddDataPoint = (point: FlowDataPoint) => {
     setFlowData(prev => {
-      // Check if we already have a data point with this frequency
+      // 检查是否已存在相同频率的数据点
       const exists = prev.some(p => p.frequency === point.frequency);
       if (exists) {
-        // Replace the existing point
+        // 替换现有数据点
         return prev.map(p => 
           p.frequency === point.frequency ? point : p
         );
       } else {
-        // Add new point and sort by frequency
+        // 添加新数据点并按频率排序
         return [...prev, point].sort((a, b) => a.frequency - b.frequency);
       }
     });
